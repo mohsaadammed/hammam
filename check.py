@@ -28,7 +28,8 @@ def send_telegram(text):
         data={"chat_id": chat_id, "text": text},
         timeout=30,
     )
-    r.raise_for_status()
+    if not r.ok:
+        sys.exit(f"خطأ من تيليجرام: HTTP {r.status_code} — {r.text}")
 
 
 def main():
