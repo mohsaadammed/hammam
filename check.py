@@ -54,7 +54,8 @@ def main():
             with open(out, "a") as f:
                 f.write("available=true\n")
     else:
-        print("لا يزال غير متوفر")
+        send_telegram(f"❌ جوز حمام محشي لا يزال غير متوفر\n{URL}")
+        print("لا يزال غير متوفر — تم إرسال تنبيه تيليجرام")
 
 
 if __name__ == "__main__":
