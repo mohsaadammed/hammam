@@ -22,14 +22,19 @@ META_RE = re.compile(
 
 def send_telegram(text):
     token = os.environ["TELEGRAM_TOKEN"]
-    chat_id = os.environ["TELEGRAM_CHAT_ID"]
-    r = requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        data={"chat_id": chat_id, "text": text},
-        timeout=30,
-    )
-    if not r.ok:
-        sys.exit(f"خطأ من تيليجرام: HTTP {r.status_code} — {r.text}")
+    chat_ids = [c.strip() for c in os.environ["TELEGRAM_CHAT_ID"].split(",") if c.strip()]
+    failed = []
+    for chat_id in chat_ids:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": chat_id, "text": text},
+            timeout=30,
+        )
+        if not r.ok:
+            print(f"خطأ من تيليجرام للرقم {chat_ids.index(chat_id) + 1}: HTTP {r.status_code} — {r.text}")
+            failed.append(chat_id)
+    if len(failed) == len(chat_ids):
+        sys.exit("فشل الإرسال لكل الأرقام")
 
 
 def main():

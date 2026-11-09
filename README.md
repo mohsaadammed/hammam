@@ -14,7 +14,7 @@
 2. أرسل أي رسالة للبوت حقك، بعدين افتح `https://api.telegram.org/bot<TOKEN>/getUpdates` وخذ الرقم اللي في `"chat":{"id": ...}`.
 3. في الـ repo: Settings ← Secrets and variables ← Actions ← New repository secret:
    - `TELEGRAM_TOKEN`
-   - `TELEGRAM_CHAT_ID`
+   - `TELEGRAM_CHAT_ID` (لأكثر من شخص افصل بين الأرقام بفاصلة، مثل `111,222`)
 4. Actions ← Salla stock watch ← Run workflow عشان تجربه يدوي.
 
 ## إعادة التشغيل بعد ما يتوقف
