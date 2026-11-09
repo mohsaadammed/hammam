@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import time
 
 import requests
 
@@ -53,15 +54,17 @@ def main():
         sys.exit("خطأ: ما لقيت لا الـ meta ولا نص نفدت الكمية — الصفحة تغيرت أو انحظر الطلب")
 
     if availability == "in stock" and not sold_out:
-        send_telegram(f"🔔 جوز حمام محشي صار متوفر الحين!\n{URL}")
-        print("متوفر! تم إرسال رسالة تيليجرام")
+        for i in range(3):
+            if i:
+                time.sleep(10)
+            send_telegram(f"🔔 جوز حمام محشي صار متوفر الحين! ({i + 1}/3)\n{URL}")
+        print("متوفر! تم إرسال 3 رسائل تيليجرام")
         out = os.environ.get("GITHUB_OUTPUT")
         if out:
             with open(out, "a") as f:
                 f.write("available=true\n")
     else:
-        send_telegram(f"❌ جوز حمام محشي لا يزال غير متوفر\n{URL}")
-        print("لا يزال غير متوفر — تم إرسال تنبيه تيليجرام")
+        print("لا يزال غير متوفر")
 
 
 if __name__ == "__main__":
