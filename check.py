@@ -40,9 +40,10 @@ def send_telegram(text):
 
 def diagnose(html):
     print(f"--- تشخيص: حجم الصفحة {len(html)} حرف")
-    for m in re.finditer(SOLD_OUT_TEXT, html):
-        ctx = html[max(0, m.start() - 150): m.end() + 80].replace("\n", " ")
-        print(f"[نفدت @{m.start()}] {ctx}")
+    for phrase in (SOLD_OUT_TEXT, "إضافة للسلة", "أضف للسلة", "اضف للسلة", "اضافة للسلة", "أضف إلى السلة"):
+        for m in list(re.finditer(phrase, html))[:8]:
+            ctx = html[max(0, m.start() - 150): m.end() + 80].replace("\n", " ")
+            print(f"[{phrase} @{m.start()}] {ctx}")
     for pat in [r'<meta[^>]+product:[^>]+>', r'"(?:is_available|status|quantity|stock|in_stock|is_out_of_stock|out_of_stock)"\s*:\s*[^,}]{1,40}',
                 r'availability"?\s*[:=]\s*"?[^",}]{1,60}', r'<button[^>]*(?:add|cart|sold|out)[^>]*>']:
         for m in list(re.finditer(pat, html, re.I))[:15]:
