@@ -39,17 +39,24 @@ def send_telegram(text):
         sys.exit("فشل الإرسال لكل الأرقام")
 
 
-def diagnose(html):
-    print(f"--- تشخيص: حجم الصفحة {len(html)} حرف")
-    for phrase in (SOLD_OUT_TEXT, "إضافة للسلة", "أضف للسلة", "اضف للسلة", "اضافة للسلة", "أضف إلى السلة"):
-        for m in list(re.finditer(phrase, html))[:8]:
-            ctx = html[max(0, m.start() - 150): m.end() + 80].replace("\n", " ")
-            print(f"[{phrase} @{m.start()}] {ctx}")
-    for pat in [r'<meta[^>]+product:[^>]+>', r'"(?:is_available|status|quantity|stock|in_stock|is_out_of_stock|out_of_stock)"\s*:\s*[^,}]{1,40}',
-                r'availability"?\s*[:=]\s*"?[^",}]{1,60}', r'<button[^>]*(?:add|cart|sold|out)[^>]*>']:
-        for m in list(re.finditer(pat, html, re.I))[:15]:
-            print(f"[{pat[:20]}] {m.group(0)[:200]}")
-    print("--- نهاية التشخيص")
+BUTTON_RE = re.compile(r"<salla-add-product-button\b[^>]*>(.*?)</salla-add-product-button>", re.S | re.I)
+SCHEMA_RE = re.compile(r'"availability"\s*:\s*"https?://schema\.org/(\w+)"', re.I)
+
+
+def signals(html):
+    """يرجع ثلاث إشارات من الصفحة: الـ meta، و schema.org، ونص زر السلة. كل وحدة True/False/None."""
+    match = META_RE.search(html)
+    meta = (match.group(1) or match.group(2)).strip().lower() if match else None
+    schema = SCHEMA_RE.search(html)
+    schema = schema.group(1) if schema else None
+    button = BUTTON_RE.search(html)
+    button = " ".join(re.sub(r"<[^>]+>", " ", button.group(1)).split()) if button else None
+    print(f"meta={meta!r} | schema={schema!r} | زر السلة={button!r}")
+    return {
+        "meta": None if meta is None else meta == "in stock",
+        "schema": None if schema is None else schema.lower() == "instock",
+        "button": None if button is None else SOLD_OUT_TEXT not in button,
+    }
 
 
 def fetch():
@@ -71,18 +78,17 @@ def main():
         sys.exit(f"خطأ: سلة رجّعت HTTP {resp.status_code} (ممكن حظر أو Cloudflare)")
     html = resp.text
 
-    match = META_RE.search(html)
-    availability = (match.group(1) or match.group(2)).strip().lower() if match else None
-    sold_out = SOLD_OUT_TEXT in html
-    print(f"product:availability = {availability!r}, نص نفدت الكمية موجود = {sold_out}")
-    diagnose(html)
-
-    # نتأكد إنها صفحة المنتج فعلاً (مو صفحة خطأ أو حظر) قبل ما نعتبر اختفاء "نفدت الكمية" توفّر
+    # نتأكد إنها صفحة المنتج فعلاً (مو صفحة خطأ أو حظر)
     if PRODUCT_ID not in html:
         sys.exit("خطأ: الصفحة اللي رجعت ما هي صفحة المنتج (ممكن حظر أو صفحة خطأ)")
 
-    # يعتبر متوفر إذا اختفت جملة "نفدت الكمية"، أو تغيّر الـ meta إلى in stock
-    if not sold_out or availability == "in stock":
+    found = {k: v for k, v in signals(html).items() if v is not None}
+    if not found:
+        sys.exit("خطأ: ما لقيت ولا إشارة للتوفر في الصفحة — شكل الصفحة تغيّر")
+
+    # يعتبر متوفر إذا أي إشارة قالت متوفر (مثلاً زر السلة ما عاد مكتوب فيه "نفدت الكمية")
+    if any(found.values()):
+        print(f"متوفر! الإشارات: {found}")
         for i in range(3):
             if i:
                 time.sleep(10)
