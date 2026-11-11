@@ -7,6 +7,7 @@ import requests
 
 URL = "https://salla.sa/asl-al7mam/%D8%AC%D9%88%D8%B2-%D8%AD%D9%85%D8%A7%D9%85-%D9%85%D8%AD%D8%B4%D9%8A/p706307288"
 SOLD_OUT_TEXT = "نفدت الكمية"
+PRODUCT_ID = "706307288"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -51,8 +52,20 @@ def diagnose(html):
     print("--- نهاية التشخيص")
 
 
+def fetch():
+    last_error = None
+    for attempt in range(3):
+        try:
+            return requests.get(URL, headers=HEADERS, timeout=30)
+        except requests.RequestException as e:
+            last_error = e
+            print(f"محاولة {attempt + 1} فشلت: {e}")
+            time.sleep(10)
+    sys.exit(f"خطأ: ما قدرت أوصل لسلة بعد 3 محاولات: {last_error}")
+
+
 def main():
-    resp = requests.get(URL, headers=HEADERS, timeout=30)
+    resp = fetch()
     print(f"HTTP {resp.status_code}")
     if resp.status_code != 200:
         sys.exit(f"خطأ: سلة رجّعت HTTP {resp.status_code} (ممكن حظر أو Cloudflare)")
@@ -64,10 +77,12 @@ def main():
     print(f"product:availability = {availability!r}, نص نفدت الكمية موجود = {sold_out}")
     diagnose(html)
 
-    if availability is None and not sold_out:
-        sys.exit("خطأ: ما لقيت لا الـ meta ولا نص نفدت الكمية — الصفحة تغيرت أو انحظر الطلب")
+    # نتأكد إنها صفحة المنتج فعلاً (مو صفحة خطأ أو حظر) قبل ما نعتبر اختفاء "نفدت الكمية" توفّر
+    if PRODUCT_ID not in html:
+        sys.exit("خطأ: الصفحة اللي رجعت ما هي صفحة المنتج (ممكن حظر أو صفحة خطأ)")
 
-    if availability == "in stock" and not sold_out:
+    # يعتبر متوفر إذا اختفت جملة "نفدت الكمية"، أو تغيّر الـ meta إلى in stock
+    if not sold_out or availability == "in stock":
         for i in range(3):
             if i:
                 time.sleep(10)
