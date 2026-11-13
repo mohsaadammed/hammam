@@ -59,6 +59,20 @@ def signals(html):
     }
 
 
+def dump(resp):
+    html = resp.text
+    print(f"--- تشخيص: الرابط النهائي {resp.url} | الحجم {len(html)} | تحويلات {[r.status_code for r in resp.history]}")
+    t = re.search(r"<title>(.*?)</title>", html, re.S)
+    print("title:", t.group(1).strip()[:200] if t else None)
+    for m in re.findall(r"<meta[^>]+>", html)[:40]:
+        print("meta:", m[:200])
+    print("salla tags:", sorted(set(re.findall(r"<(salla-[a-z-]+)", html)))[:40])
+    for phrase in (PRODUCT_ID, SOLD_OUT_TEXT, "السلة", "availability", "InStock", "OutOfStock", "quantity"):
+        for m in list(re.finditer(re.escape(phrase), html))[:4]:
+            print(f"[{phrase}] " + html[max(0, m.start() - 150): m.end() + 150].replace("\n", " "))
+    print("--- بداية الصفحة:", html[:1500].replace("\n", " "))
+
+
 def fetch():
     last_error = None
     for attempt in range(3):
@@ -84,6 +98,7 @@ def main():
 
     found = {k: v for k, v in signals(html).items() if v is not None}
     if not found:
+        dump(resp)
         sys.exit("خطأ: ما لقيت ولا إشارة للتوفر في الصفحة — شكل الصفحة تغيّر")
 
     # يعتبر متوفر إذا أي إشارة قالت متوفر (مثلاً زر السلة ما عاد مكتوب فيه "نفدت الكمية")
