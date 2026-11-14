@@ -73,23 +73,61 @@ def dump(resp):
     print("--- بداية الصفحة:", html[:1500].replace("\n", " "))
 
 
+ERRORS_FILE = os.path.join("state", "errors")
+MAX_ERRORS = 15  # كم فحص متتالي يفشل قبل ما يطلع خطأ ويجيك إيميل (تقريباً 15 دقيقة)
+
+
+def read_errors():
+    try:
+        with open(ERRORS_FILE) as f:
+            return int(f.read().strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def write_errors(n):
+    os.makedirs(os.path.dirname(ERRORS_FILE), exist_ok=True)
+    with open(ERRORS_FILE, "w") as f:
+        f.write(str(n))
+
+
+class SoftError(Exception):
+    """خطأ مؤقت (حظر عابر، انقطاع، صفحة غريبة). ما يطلع خطأ إلا إذا تكرر MAX_ERRORS مرة ورا بعض."""
+
+
 def fetch():
-    last_error = None
+    last = None
     for attempt in range(3):
-        try:
-            return requests.get(URL, headers=HEADERS, timeout=30)
-        except requests.RequestException as e:
-            last_error = e
-            print(f"محاولة {attempt + 1} فشلت: {e}")
+        if attempt:
             time.sleep(10)
-    sys.exit(f"خطأ: ما قدرت أوصل لسلة بعد 3 محاولات: {last_error}")
+        try:
+            resp = requests.get(URL, headers=HEADERS, timeout=30)
+        except requests.RequestException as e:
+            last = f"انقطاع: {e}"
+        else:
+            print(f"HTTP {resp.status_code}")
+            if resp.status_code == 200:
+                return resp
+            last = f"سلة رجّعت HTTP {resp.status_code} (ممكن حظر أو Cloudflare)"
+        print(f"محاولة {attempt + 1} فشلت: {last}")
+    raise SoftError(last)
 
 
 def main():
+    try:
+        check()
+    except SoftError as e:
+        n = read_errors() + 1
+        write_errors(n)
+        if n >= MAX_ERRORS:
+            sys.exit(f"خطأ: {e} — صار له {n} فحص متتالي يفشل")
+        print(f"تحذير: {e} — فشل مؤقت رقم {n} من {MAX_ERRORS}، نكمّل بدون خطأ")
+        return
+    write_errors(0)
+
+
+def check():
     resp = fetch()
-    print(f"HTTP {resp.status_code}")
-    if resp.status_code != 200:
-        sys.exit(f"خطأ: سلة رجّعت HTTP {resp.status_code} (ممكن حظر أو Cloudflare)")
     html = resp.text
 
     # سلة تحوّل رابط المنتج لصفحة المتجر الرئيسية إذا المتجر أخفى المنتج أو حذفه.
@@ -100,12 +138,12 @@ def main():
 
     # نتأكد إنها صفحة المنتج فعلاً (مو صفحة خطأ أو حظر)
     if PRODUCT_ID not in html:
-        sys.exit("خطأ: الصفحة اللي رجعت ما هي صفحة المنتج (ممكن حظر أو صفحة خطأ)")
+        raise SoftError("الصفحة اللي رجعت ما هي صفحة المنتج (ممكن حظر أو صفحة خطأ)")
 
     found = {k: v for k, v in signals(html).items() if v is not None}
     if not found:
         dump(resp)
-        sys.exit("خطأ: ما لقيت ولا إشارة للتوفر في الصفحة — شكل الصفحة تغيّر")
+        raise SoftError("ما لقيت ولا إشارة للتوفر في الصفحة — شكل الصفحة تغيّر")
 
     # يعتبر متوفر إذا أي إشارة قالت متوفر (مثلاً زر السلة ما عاد مكتوب فيه "نفدت الكمية")
     if any(found.values()):
