@@ -1,3 +1,4 @@
+import datetime
 import os
 import re
 import sys
@@ -44,7 +45,9 @@ SCHEMA_RE = re.compile(r'"availability"\s*:\s*"https?://schema\.org/(\w+)"', re.
 
 
 def signals(html):
-    """يرجع ثلاث إشارات من الصفحة: الـ meta، و schema.org، ونص زر السلة. كل وحدة True/False/None."""
+    """يقرأ ثلاث إشارات من الصفحة: الـ meta، و schema.org، ونص زر السلة.
+    كل إشارة True إذا تغيّرت عن قيمة "نفدت الكمية" المعروفة (يعني ممكن متوفر)، False إذا لسا نفدت، None إذا ما انلقت.
+    نعتمد على "تغيّرت عن نفدت" بدل "صارت متوفر بالضبط"، عشان أي قيمة جديدة ما نعرفها تعطي تنبيه بدل ما تفوت."""
     match = META_RE.search(html)
     meta = (match.group(1) or match.group(2)).strip().lower() if match else None
     schema = SCHEMA_RE.search(html)
@@ -52,11 +55,13 @@ def signals(html):
     button = BUTTON_RE.search(html)
     button = " ".join(re.sub(r"<[^>]+>", " ", button.group(1)).split()) if button else None
     print(f"meta={meta!r} | schema={schema!r} | زر السلة={button!r}")
-    return {
-        "meta": None if meta is None else meta == "in stock",
-        "schema": None if schema is None else schema.lower() == "instock",
+    raw = {"meta": meta, "schema": schema, "button": button}
+    flags = {
+        "meta": None if meta is None else meta not in ("out of stock", "outofstock"),
+        "schema": None if schema is None else schema.lower() != "outofstock",
         "button": None if button is None else SOLD_OUT_TEXT not in button,
     }
+    return flags, raw
 
 
 def dump(resp):
@@ -113,9 +118,31 @@ def fetch():
     raise SoftError(last)
 
 
+HEARTBEAT_FILE = os.path.join("state", "heartbeat")
+HEARTBEAT_HOUR = 21  # الساعة 9 المساء بتوقيت السعودية: رسالة يومية تأكد إن البوت شغّال
+
+
+def heartbeat(status):
+    """مرة في اليوم يرسل رسالة "البوت شغّال" مع اللي قرأه من الصفحة، عشان تتأكد إنه ما وقف."""
+    now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3)))
+    today = now.date().isoformat()
+    try:
+        with open(HEARTBEAT_FILE) as f:
+            last = f.read().strip()
+    except OSError:
+        last = ""
+    if now.hour < HEARTBEAT_HOUR or last == today:
+        return
+    os.makedirs(os.path.dirname(HEARTBEAT_FILE), exist_ok=True)
+    with open(HEARTBEAT_FILE, "w") as f:
+        f.write(today)
+    send_telegram(f"✅ بوت الحمام شغّال ويفحص كل دقيقة.\nآخر فحص ({now:%H:%M}): {status}\n{URL}")
+    print("تم إرسال رسالة التأكيد اليومية")
+
+
 def main():
     try:
-        check()
+        status = check()
     except SoftError as e:
         n = read_errors() + 1
         write_errors(n)
@@ -124,6 +151,8 @@ def main():
         print(f"تحذير: {e} — فشل مؤقت رقم {n} من {MAX_ERRORS}، نكمّل بدون خطأ")
         return
     write_errors(0)
+    if status:
+        heartbeat(status)
 
 
 def check():
@@ -134,13 +163,14 @@ def check():
     # هذي مو مشكلة في البوت: نعتبره غير متوفر ونكمّل بدون خطأ، ولما يرجع المنتج يرجع الفحص عادي.
     if resp.history and f"p{PRODUCT_ID}" not in resp.url:
         print(f"المنتج مخفي أو محذوف من المتجر حالياً (الرابط يحوّل إلى {resp.url}) — نعتبره غير متوفر")
-        return
+        return "المنتج مخفي من المتجر حالياً"
 
     # نتأكد إنها صفحة المنتج فعلاً (مو صفحة خطأ أو حظر)
     if PRODUCT_ID not in html:
         raise SoftError("الصفحة اللي رجعت ما هي صفحة المنتج (ممكن حظر أو صفحة خطأ)")
 
-    found = {k: v for k, v in signals(html).items() if v is not None}
+    flags, raw = signals(html)
+    found = {k: v for k, v in flags.items() if v is not None}
     if not found:
         dump(resp)
         raise SoftError("ما لقيت ولا إشارة للتوفر في الصفحة — شكل الصفحة تغيّر")
@@ -151,7 +181,7 @@ def check():
         for i in range(3):
             if i:
                 time.sleep(10)
-            send_telegram(f"🔔 جوز حمام محشي صار متوفر الحين! ({i + 1}/3)\n{URL}")
+            send_telegram(f"🔔 جوز حمام محشي صار متوفر الحين! ({i + 1}/3)\n{URL}\n(زر السلة: {raw['button']})")
         print("متوفر! تم إرسال 3 رسائل تيليجرام")
         out = os.environ.get("GITHUB_OUTPUT")
         if out:
@@ -159,6 +189,7 @@ def check():
                 f.write("available=true\n")
     else:
         print("لا يزال غير متوفر")
+        return f"غير متوفر — زر السلة مكتوب عليه \"{raw['button']}\"" if raw["button"] else "غير متوفر"
 
 
 if __name__ == "__main__":
