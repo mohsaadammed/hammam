@@ -120,7 +120,6 @@ def fetch():
 
 RIYADH = datetime.timezone(datetime.timedelta(hours=3))
 WATCH_HOURS = {19, 20, 21, 22, 23, 0, 1}  # يراقب كل يوم من 7 المساء لين 2 الفجر بتوقيت السعودية
-HEARTBEAT_FILE = os.path.join("state", "heartbeat")
 LAST_FILE = os.path.join("state", "available")
 
 
@@ -138,28 +137,13 @@ def write_state(path, value):
         f.write(value)
 
 
-def watch_day(now):
-    """الليلة اللي تبدأ 7 المساء: بعد منتصف الليل (0-1) تحسب على اليوم اللي قبله."""
-    return (now - datetime.timedelta(hours=2)).date().isoformat()
-
-
-def heartbeat(now, status):
-    """أول فحص في كل ليلة يرسل رسالة "بدأت المراقبة" مع اللي قرأه من الصفحة، عشان تتأكد إن البوت شغّال."""
-    day = watch_day(now)
-    if read_state(HEARTBEAT_FILE) == day:
-        return
-    write_state(HEARTBEAT_FILE, day)
-    send_telegram(f"✅ بدأت مراقبة الليلة (7 م – 2 ص، كل دقيقة).\nأول فحص ({now:%H:%M}): {status}\n{URL}")
-    print("تم إرسال رسالة بداية المراقبة")
-
-
 def main():
     now = datetime.datetime.now(RIYADH)
     if now.hour not in WATCH_HOURS:
         print(f"الساعة {now:%H:%M} بتوقيت السعودية — خارج وقت المراقبة (7 م – 2 ص)، ما نفحص")
         return
     try:
-        status = check()
+        check()
     except SoftError as e:
         n = read_errors() + 1
         write_errors(n)
@@ -168,7 +152,6 @@ def main():
         print(f"تحذير: {e} — فشل مؤقت رقم {n} من {MAX_ERRORS}، نكمّل بدون خطأ")
         return
     write_errors(0)
-    heartbeat(now, status)
 
 
 def check():
@@ -207,8 +190,7 @@ def check():
         print("لا يزال متوفر — سبق وأرسلنا التنبيه، ما نكرره")
         return "متوفر"
     if was_available:
-        send_telegram(f"❌ جوز حمام محشي نفدت كميته مرة ثانية. البوت مستمر يراقب.\n{URL}")
-        print("نفد مرة ثانية — تم إرسال رسالة")
+        print("نفد مرة ثانية — بننبهك لما يتوفر من جديد")
     print("لا يزال غير متوفر")
     return f"غير متوفر — زر السلة مكتوب عليه \"{raw['button']}\"" if raw["button"] else "غير متوفر"
 
