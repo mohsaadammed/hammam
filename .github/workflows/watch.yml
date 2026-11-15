@@ -2,11 +2,12 @@ name: Salla stock watch
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    # احتياطي كل 5 دقايق وقت المراقبة (7 م – 2 ص السعودية = 16–22 UTC). التشغيل الأساسي كل دقيقة من cron-job.org
+    - cron: "*/5 16-22 * * *"
   workflow_dispatch:
 
 permissions:
-  actions: write
+  contents: read
 
 jobs:
   check:
@@ -33,8 +34,3 @@ jobs:
         with:
           path: state
           key: errors-${{ github.run_id }}
-      - name: Disable workflow after notifying
-        if: steps.check.outputs.available == 'true'
-        run: gh workflow disable watch.yml --repo "$GITHUB_REPOSITORY"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
