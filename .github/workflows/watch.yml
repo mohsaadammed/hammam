@@ -1,9 +1,7 @@
 name: Salla stock watch
 
 on:
-  schedule:
-    # احتياطي كل 5 دقايق وقت المراقبة (7 م – 2 ص السعودية = 16–22 UTC). التشغيل الأساسي كل دقيقة من cron-job.org
-    - cron: "*/5 16-22 * * *"
+  # البوت موقّف بطلب المستخدم: شلنا الجدول، والـ job ما يشتغل (if: false)
   workflow_dispatch:
 
 permissions:
@@ -11,6 +9,7 @@ permissions:
 
 jobs:
   check:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
